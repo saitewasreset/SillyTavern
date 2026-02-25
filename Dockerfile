@@ -32,7 +32,15 @@ RUN \
 # Pre-compile public libraries
 RUN \
   echo "*** Run Webpack ***" && \
-  node "./docker/build-lib.js"
+  node "./docker/build-lib.js" && \
+  echo "*** Copy compiled lib.js to public directory ***" && \
+  WEBPACK_OUTPUT=$(find ./dist/_webpack -name "lib.js" -type f | head -1) && \
+  if [ -n "$WEBPACK_OUTPUT" ]; then \
+  cp "$WEBPACK_OUTPUT" ./public/lib.js && \
+  echo "✓ Compiled lib.js copied to public/lib.js"; \
+  else \
+  echo "⚠ Warning: Compiled lib.js not found, using source version"; \
+  fi
 
 # Set the entrypoint script and cleanup
 RUN \

@@ -230,7 +230,23 @@ app.get('/login', loginPageMiddleware);
 // Host frontend assets
 const webpackMiddleware = getWebpackServeMiddleware();
 app.use(webpackMiddleware);
-app.use(express.static(path.join(serverDirectory, 'public'), {}));
+
+// Static file serving
+// When USE_NGINX_PROXY=true, Nginx handles static files for better performance
+// Otherwise, Express serves all static files
+const useNginxProxy = getConfigValue('useNginxProxy', false, 'boolean') || process.env.USE_NGINX_PROXY === 'true';
+if (useNginxProxy) {
+    console.log('Nginx proxy mode enabled. Static files should be served by Nginx.');
+    // In Nginx proxy mode, only serve files not handled by Nginx
+    // This includes dynamic content and files that may not exist in Nginx's static directory
+    app.use(express.static(path.join(serverDirectory, 'public'), {
+        index: false, // Don't serve index.html as static (handled by route above)
+        fallthrough: true,
+    }));
+} else {
+    // Default mode: Express serves all static files
+    app.use(express.static(path.join(serverDirectory, 'public'), {}));
+}
 
 // Public API
 app.use('/api/users', usersPublicRouter);

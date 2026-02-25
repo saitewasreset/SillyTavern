@@ -1,0 +1,98 @@
+# Docker Compose configuration for SillyTavern with Nginx
+# Architecture: Nginx (reverse proxy + static files) -> Node.js (dynamic content)
+# HTTPS is handled by Cloudflare ZeroTrust
+
+services:
+  # SillyTavern Node.js backend service
+  sillytavern:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: sillytavern
+    hostname: sillytavern
+    image: sillytavern:latest
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - FORCE_COLOR=${FORCE_COLOR:-1}
+      - USE_NGINX_PROXY=${USE_NGINX_PROXY:-true}
+      - SILLYTAVERN_HEARTBEATINTERVAL=${SILLYTAVERN_HEARTBEATINTERVAL:-30}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    # Internal port only - not exposed to host
+    expose:
+      - "${SILLYTAVERN_PORT:-8000}"
+    volumes:
+      - "./config:/home/node/app/config"
+      - "./data:/home/node/app/data"
+      - "./plugins:/home/node/app/plugins"
+      - "./extensions:/home/node/app/public/scripts/extensions/third-party"
+      # Share public directory with Nginx for static files
+      # Note: sillytavern needs write access, nginx will mount it as read-only
+      - sillytavern-static:/home/node/app/public
+    healthcheck:
+      test: ["CMD", "node", "src/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - sillytavern-network
+    # Resource limits (optional, controlled by .env)
+    deploy:
+      resources:
+        limits:
+          memory: ${SILLYTAVERN_MEMORY_LIMIT:-2G}
+        reservations:
+          memory: ${SILLYTAVERN_MEMORY_RESERVATION:-1G}
+    # Prevent direct access from host
+    # All traffic goes through Nginx
+
+  # Nginx reverse proxy and static file server
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    container_name: sillytavern-nginx
+    hostname: nginx
+    image: sillytavern-nginx:latest
+    ports:
+      - "${NGINX_PORT:-8000}:80"  # HTTP only - HTTPS handled by Cloudflare ZeroTrust
+    volumes:
+      # Mount static files from SillyTavern
+      - sillytavern-static:/usr/share/nginx/html:ro
+      # Optional: Custom Nginx config override
+      - ./nginx.conf:/etc/nginx/conf.d/sillytavern.conf:ro
+      # Optional: Nginx logs persistence
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      sillytavern:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/version"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - sillytavern-network
+    # Resource limits (controlled by .env)
+    deploy:
+      resources:
+        limits:
+          memory: ${NGINX_MEMORY_LIMIT:-256M}
+        reservations:
+          memory: ${NGINX_MEMORY_RESERVATION:-128M}
+
+# Shared volume for static files
+volumes:
+  sillytavern-static:
+    driver: local
+
+# Internal network for service communication
+networks:
+  sillytavern-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 100.64.112.0/24

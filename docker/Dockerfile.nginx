@@ -1,0 +1,30 @@
+FROM nginx:1.27-alpine
+
+# Install basic tools
+RUN apk add --no-cache tini wget
+
+# Remove default Nginx configuration
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom Nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/sillytavern.conf
+
+# Create directory for static files
+RUN mkdir -p /usr/share/nginx/html
+
+# Copy static files from the built SillyTavern image
+# This ensures we get the compiled lib.js, not the source version
+# The copy will happen during docker-compose build
+# For now, we'll rely on the volume mount at runtime
+WORKDIR /usr/share/nginx/html
+
+# Expose HTTP port (HTTPS handled by Cloudflare ZeroTrust)
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/nginx-health || exit 1
+
+# Use tini to handle signals properly
+ENTRYPOINT ["tini", "--"]
+CMD ["nginx", "-g", "daemon off;"]

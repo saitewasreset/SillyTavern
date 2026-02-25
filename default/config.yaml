@@ -71,6 +71,9 @@ basicAuthUser:
   password: "password"
 # Enables CORS proxy middleware
 enableCorsProxy: false
+# Use Nginx proxy for static files (set to true when using Nginx as reverse proxy)
+# When enabled, Express will not serve static files that should be handled by Nginx
+useNginxProxy: false
 # CORS settings (applied to all routes)
 cors:
   # Enable or disable CORS middleware
